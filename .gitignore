@@ -1,0 +1,11 @@
+# project ignores
+.env
+node_modules
+package-lock.json
+
+# IDE ignores
+.vscode
+
+# hash's local file ignores
+junk
+
