@@ -1,0 +1,231 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?
+  role      UserRole @default(MEMBER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  ownedProjects  Project[]    @relation("ProjectOwner")
+  ownedTeams     Team[]       @relation("TeamOwner")
+  assignedTasks  Task[]       @relation("TaskAssignee")
+  createdTasks   Task[]       @relation("TaskCreator")
+  comments       Comment[]
+  attachments    Attachment[]
+  teamMembers    TeamMember[]
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  owner    User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members  TeamMember[]
+  projects Project[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id     String           @id @default(cuid())
+  userId String
+  teamId String
+  role   TeamMemberRole   @default(MEMBER)
+  status TeamMemberStatus @default(ACTIVE)
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("team_members")
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(NOT_STARTED)
+  privacy     ProjectPrivacy @default(TEAM_ONLY)
+  ownerId     String
+  teamId      String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relationships
+  owner User  @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  team  Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  tasks Task[]
+
+  @@map("projects")
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  position    Int          @default(0)
+  assigneeId  String?
+  creatorId   String
+  projectId   String
+  parentId    String?      // For subtasks
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relationships
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  creator     User         @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent      Task?        @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    Task[]       @relation("TaskSubtasks")
+  comments    Comment[]
+  attachments Attachment[]
+  dependencies TaskDependency[] @relation("DependentTask")
+  dependents   TaskDependency[] @relation("DependsOnTask")
+
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id             String @id @default(cuid())
+  dependentId    String // Task that depends on another
+  dependsOnId    String // Task that this depends on
+
+  // Relationships
+  dependent Task @relation("DependentTask", fields: [dependentId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("DependsOnTask", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@unique([dependentId, dependsOnId])
+  @@map("task_dependencies")
+}
+
+model Comment {
+  id       String   @id @default(cuid())
+  content  String
+  authorId String
+  taskId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  filename   String
+  url        String
+  mimeType   String
+  size       Int
+  taskId     String
+  uploadedBy String
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  task     Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
+
+model Notification {
+  id       String           @id @default(cuid())
+  title    String
+  message  String
+  type     NotificationType
+  read     Boolean          @default(false)
+  userId   String
+  entityId String?          // ID of related entity (task, project, etc.)
+  entityType String?        // Type of related entity
+  createdAt DateTime        @default(now())
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  MEMBER
+  GUEST
+}
+
+enum TeamMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum ProjectStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  ARCHIVED
+}
+
+enum ProjectPrivacy {
+  PUBLIC
+  PRIVATE
+  TEAM_ONLY
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  TASK_COMMENT
+  PROJECT_INVITE
+  MENTION
+  DEADLINE_REMINDER
+}
